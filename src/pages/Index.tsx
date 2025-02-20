@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { Line } from 'react-chartjs-2';
 import {
@@ -163,14 +162,32 @@ const Index = () => {
     const homeStats = teamStats[home];
     const awayStats = teamStats[away];
 
-    return Math.min(Math.round(
-      (homeStats.bothTeamsScoredPercentage * 0.3) +
-      (awayStats.bothTeamsScoredPercentage * 0.3) +
-      (homeStats.formPercentage * 0.1) +
-      (awayStats.formPercentage * 0.1) +
-      (((homeStats.homeGoalsScored / homeStats.homeMatches) * 10) * 0.1) +
-      (((awayStats.awayGoalsScored / awayStats.awayMatches) * 10) * 0.1)
+    const homeBTTSWeight = 0.25; // 25%
+    const awayBTTSWeight = 0.20; // 20%
+
+    const homeFormWeight = 0.15; // 15%
+    const awayFormWeight = 0.15; // 15%
+
+    const homeGoalsScoredWeight = 0.10; // 10%
+    const homeGoalsConcededWeight = 0.05; // 5%
+    const awayGoalsScoredWeight = 0.05; // 5%
+    const awayGoalsConcededWeight = 0.05; // 5%
+
+    const probability = Math.min(Math.round(
+      (homeStats.bothTeamsScoredPercentage * homeBTTSWeight) +
+      (awayStats.bothTeamsScoredPercentage * awayBTTSWeight) +
+      
+      (homeStats.formPercentage * homeFormWeight) +
+      (awayStats.formPercentage * awayFormWeight) +
+      
+      (((homeStats.homeGoalsScored / homeStats.homeMatches) * 100) * homeGoalsScoredWeight) +
+      (((homeStats.homeGoalsConceded / homeStats.homeMatches) * 100) * homeGoalsConcededWeight) +
+      
+      (((awayStats.awayGoalsScored / awayStats.awayMatches) * 100) * awayGoalsScoredWeight) +
+      (((awayStats.awayGoalsConceded / awayStats.awayMatches) * 100) * awayGoalsConcededWeight)
     ), 100);
+
+    return probability;
   };
 
   const handleAddMatch = () => {
