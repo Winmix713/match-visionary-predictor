@@ -46,6 +46,15 @@ interface TeamStats {
   awayGoalsConceded: number;
   lastFiveMatches: boolean[];
   formPercentage: number;
+  expectedGoals?: number;
+  headToHeadStats?: {
+    homeWins: number;
+    awayWins: number;
+    draws: number;
+    homeWinPercentage: number;
+    awayWinPercentage: number;
+    drawPercentage: number;
+  };
 }
 
 interface MatchPrediction {
@@ -76,6 +85,7 @@ const Index = () => {
     awayGoalsConceded: 5
   });
   const [showWeights, setShowWeights] = useState(false);
+  const [professionalMode, setProfessionalMode] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -173,21 +183,62 @@ const Index = () => {
     const homeStats = teamStats[home];
     const awayStats = teamStats[away];
 
-    const probability = Math.min(Math.round(
-      (homeStats.bothTeamsScoredPercentage * (weights.homeBTTS / 100)) +
-      (awayStats.bothTeamsScoredPercentage * (weights.awayBTTS / 100)) +
-      
-      (homeStats.formPercentage * (weights.homeForm / 100)) +
-      (awayStats.formPercentage * (weights.awayForm / 100)) +
-      
-      (((homeStats.homeGoalsScored / homeStats.homeMatches) * 100) * (weights.homeGoalsScored / 100)) +
-      (((homeStats.homeGoalsConceded / homeStats.homeMatches) * 100) * (weights.homeGoalsConceded / 100)) +
-      
-      (((awayStats.awayGoalsScored / awayStats.awayMatches) * 100) * (weights.awayGoalsScored / 100)) +
-      (((awayStats.awayGoalsConceded / awayStats.awayMatches) * 100) * (weights.awayGoalsConceded / 100))
-    ), 100);
+    let probability: number;
 
-    return probability;
+    if (professionalMode) {
+      // Első 50% - jelenlegi súlyozási rendszer felére csökkentve
+      const currentSystemProb = 
+        (homeStats.bothTeamsScoredPercentage * (weights.homeBTTS / 200)) +
+        (awayStats.bothTeamsScoredPercentage * (weights.awayBTTS / 200)) +
+        (homeStats.formPercentage * (weights.homeForm / 200)) +
+        (awayStats.formPercentage * (weights.awayForm / 200)) +
+        (((homeStats.homeGoalsScored / homeStats.homeMatches) * 100) * (weights.homeGoalsScored / 200)) +
+        (((homeStats.homeGoalsConceded / homeStats.homeMatches) * 100) * (weights.homeGoalsConceded / 200)) +
+        (((awayStats.awayGoalsScored / awayStats.awayMatches) * 100) * (weights.awayGoalsScored / 200)) +
+        (((awayStats.awayGoalsConceded / awayStats.awayMatches) * 100) * (weights.awayGoalsConceded / 200));
+
+      // Második 50% - PHP alapú komplex számítási rendszer
+      const complexSystemProb = calculateComplexProbability(homeStats, awayStats);
+      
+      probability = currentSystemProb + complexSystemProb;
+    } else {
+      // Eredeti számítási mód
+      probability = 
+        (homeStats.bothTeamsScoredPercentage * (weights.homeBTTS / 100)) +
+        (awayStats.bothTeamsScoredPercentage * (weights.awayBTTS / 100)) +
+        (homeStats.formPercentage * (weights.homeForm / 100)) +
+        (awayStats.formPercentage * (weights.awayForm / 100)) +
+        (((homeStats.homeGoalsScored / homeStats.homeMatches) * 100) * (weights.homeGoalsScored / 100)) +
+        (((homeStats.homeGoalsConceded / homeStats.homeMatches) * 100) * (weights.homeGoalsConceded / 100)) +
+        (((awayStats.awayGoalsScored / awayStats.awayMatches) * 100) * (weights.awayGoalsScored / 100)) +
+        (((awayStats.awayGoalsConceded / awayStats.awayMatches) * 100) * (weights.awayGoalsConceded / 100));
+    }
+
+    return Math.min(Math.round(probability), 100);
+  };
+
+  const calculateComplexProbability = (homeStats: TeamStats, awayStats: TeamStats): number => {
+    // Az eredeti PHP kódból átvett komplex számítási logika
+    const expectedGoalsWeight = 15; // 15%
+    const formIndexWeight = 15;    // 15%
+    const h2hStatsWeight = 20;     // 20%
+
+    // Várható gólok alapján
+    const homeExpectedGoals = homeStats.averageGoalsScored || 0;
+    const awayExpectedGoals = awayStats.averageGoalsScored || 0;
+    const expectedGoalsProb = 
+      ((homeExpectedGoals + awayExpectedGoals) / 4) * expectedGoalsWeight;
+
+    // Forma index alapján
+    const homeForm = homeStats.formPercentage || 0;
+    const awayForm = awayStats.formPercentage || 0;
+    const formProb = ((homeForm + awayForm) / 200) * formIndexWeight;
+
+    // Head-to-head statisztikák alapján
+    const h2hProb = (homeStats.bothTeamsScoredPercentage + 
+      awayStats.bothTeamsScoredPercentage) / 2 * (h2hStatsWeight / 100);
+
+    return expectedGoalsProb + formProb + h2hProb;
   };
 
   const handleAddMatch = () => {
@@ -368,23 +419,44 @@ const Index = () => {
         <div className="text-center mb-12">
           <div className="flex justify-center items-center gap-4 mb-4">
             <Goal className="h-12 w-12 text-cyan-400" />
-            <button
-              onClick={() => setShowWeights(!showWeights)}
-              className="p-2 rounded-full hover:bg-gray-800 transition-colors"
-              title="Súlyozási beállítások"
-            >
-              <Settings className="h-6 w-6 text-cyan-400" />
-            </button>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setShowWeights(!showWeights)}
+                className="p-2 rounded-full hover:bg-gray-800 transition-colors"
+                title="Súlyozási beállítások"
+              >
+                <Settings className="h-6 w-6 text-cyan-400" />
+              </button>
+              <button
+                onClick={() => setProfessionalMode(!professionalMode)}
+                className={`px-4 py-2 rounded-lg transition-colors ${
+                  professionalMode 
+                    ? 'bg-cyan-600 text-white' 
+                    : 'bg-gray-700 text-gray-300'
+                }`}
+                title="Professzionális mód"
+              >
+                PRO
+              </button>
+            </div>
           </div>
           <h1 className="text-4xl font-extrabold text-white mb-4">Soccer Match Predictor</h1>
-          <p className="text-xl text-gray-400">Advanced analysis based on {matchData.length.toLocaleString()} historical matches</p>
+          <p className="text-xl text-gray-400">
+            Advanced analysis based on {matchData.length.toLocaleString()} historical matches
+            {professionalMode && " - Professional Mode"}
+          </p>
         </div>
 
         {showWeights && (
           <div className="bg-gray-800/50 rounded-xl shadow-xl p-8 backdrop-blur-lg border border-gray-700/50 mb-8">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold text-white">Súlyozási Beállítások</h2>
-              <p className="text-gray-400">Összeg: {Object.values(weights).reduce((a, b) => a + b, 0)}%</p>
+              <div className="flex items-center gap-4">
+                <p className="text-gray-400">
+                  Összeg: {Object.values(weights).reduce((a, b) => a + b, 0)}%
+                  {professionalMode && " (50% súlyozással)"}
+                </p>
+              </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div>
