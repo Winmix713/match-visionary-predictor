@@ -336,15 +336,142 @@ const Index = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="text-center text-red-400">
+          <p className="text-xl font-semibold">Error loading data</p>
+          <p className="mt-2">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
-If there's knowledge, context or custom instructions you want to include in every edit in this project, set it below.
+  return (
+    <div className="min-h-screen bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="text-center mb-12">
+          <div className="flex justify-center mb-4">
+            <Goal className="h-12 w-12 text-cyan-400" />
+          </div>
+          <h1 className="text-4xl font-extrabold text-white mb-4">Soccer Match Predictor</h1>
+          <p className="text-xl text-gray-400">Advanced analysis based on {matchData.length.toLocaleString()} historical matches</p>
+        </div>
 
-<lov-actions>
-<lov-knowledge>
-</lov-actions>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          <div className="bg-gray-800/50 rounded-xl shadow-xl p-8 backdrop-blur-lg border border-gray-700/50">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-white">Match Selection</h2>
+              <ArrowUpRight className="h-6 w-6 text-cyan-400" />
+            </div>
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">Home Team</label>
+                <select
+                  className="w-full px-4 py-2 rounded-lg bg-gray-700/50 border border-gray-600/50 text-white focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition duration-200"
+                  value={homeTeam}
+                  onChange={(e) => setHomeTeam(e.target.value)}
+                >
+                  <option value="">Select Home Team</option>
+                  {teams.map(team => (
+                    <option key={team} value={team}>{team}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">Away Team</label>
+                <select
+                  className="w-full px-4 py-2 rounded-lg bg-gray-700/50 border border-gray-600/50 text-white focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition duration-200"
+                  value={awayTeam}
+                  onChange={(e) => setAwayTeam(e.target.value)}
+                >
+                  <option value="">Select Away Team</option>
+                  {teams.map(team => (
+                    <option key={team} value={team}>{team}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
-If your project requires backend functionality, such as persistent storage for match data and user settings, you can use the Supabase menu on the top right to connect your project to Supabase.
-<lov-actions>
-<lov-message-prompt message="Tell me more about Supabase">Learn more about Supabase</lov-message-prompt>
-</lov-actions>
+            <div className="flex gap-4 mt-8">
+              <button
+                className="flex-1 bg-cyan-500 text-white py-3 px-6 rounded-lg hover:bg-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 focus:ring-offset-gray-800 transition duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleAddMatch}
+                disabled={!homeTeam || !awayTeam}
+              >
+                <TrendingUp className="h-5 w-5" />
+                Add Match
+              </button>
+              <button
+                className="flex-1 bg-pink-500 text-white py-3 px-6 rounded-lg hover:bg-pink-600 focus:outline-none focus:ring-2 focus:ring-pink-400 focus:ring-offset-2 focus:ring-offset-gray-800 transition duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleRunPredictions}
+                disabled={selectedMatches.length === 0}
+              >
+                <Play className="h-5 w-5" />
+                Run Predictions
+              </button>
+            </div>
+
+            <div className="mt-8">
+              <h3 className="text-lg font-semibold text-white mb-4">Selected Matches ({selectedMatches.length}/8)</h3>
+              <div className="space-y-3">
+                {selectedMatches.map((match, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-gray-700/30 border border-gray-600/30">
+                    <span className="text-cyan-400 font-medium">{match.home}</span>
+                    <span className="text-gray-400">vs</span>
+                    <span className="text-pink-500 font-medium">{match.away}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {predictedMatches.length > 0 && (
+            <div className="bg-gray-800/50 rounded-xl shadow-xl p-8 backdrop-blur-lg border border-gray-700/50">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-white">BTTS Predictions</h2>
+                <Users className="h-6 w-6 text-cyan-400" />
+              </div>
+              <div className="space-y-4">
+                {predictedMatches.map((match, index) => (
+                  <div key={index} className="relative">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        <span className="text-gray-400 text-sm">#{index + 1}</span>
+                        <span className="text-cyan-400 font-medium">{match.homeTeam}</span>
+                        <span className="text-gray-400">vs</span>
+                        <span className="text-pink-500 font-medium">{match.awayTeam}</span>
+                      </div>
+                      <span className="text-white font-bold">{match.probability}%</span>
+                    </div>
+                    <div className="h-2 w-full bg-gray-700/30 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-cyan-500 to-pink-500 rounded-full transition-all duration-500"
+                        style={{ width: `${match.probability}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {(homeTeam || awayTeam) && (
+          <div className="bg-gray-800/50 rounded-xl shadow-xl p-8 backdrop-blur-lg border border-gray-700/50">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-white">Performance Analysis</h2>
+              <TrendingUp className="h-6 w-6 text-cyan-400" />
+            </div>
+            <div className="h-96">
+              <Line 
+                data={chartData} 
+                options={chartOptions}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default Index;
