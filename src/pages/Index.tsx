@@ -11,7 +11,7 @@ import {
   Legend,
   Filler
 } from 'chart.js';
-import { TrendingUp, Users, Goal, Loader2, ArrowUpRight, Play } from 'lucide-react';
+import { TrendingUp, Users, Goal, Loader2, ArrowUpRight, Play, Settings } from 'lucide-react';
 
 ChartJS.register(
   CategoryScale,
@@ -65,6 +65,17 @@ const Index = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedMatches, setSelectedMatches] = useState<Array<{home: string, away: string}>>([]);
   const [predictedMatches, setPredictedMatches] = useState<MatchPrediction[]>([]);
+  const [weights, setWeights] = useState({
+    homeBTTS: 25,
+    awayBTTS: 20,
+    homeForm: 15,
+    awayForm: 15,
+    homeGoalsScored: 10,
+    homeGoalsConceded: 5,
+    awayGoalsScored: 5,
+    awayGoalsConceded: 5
+  });
+  const [showWeights, setShowWeights] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -162,29 +173,18 @@ const Index = () => {
     const homeStats = teamStats[home];
     const awayStats = teamStats[away];
 
-    const homeBTTSWeight = 0.25; // 25%
-    const awayBTTSWeight = 0.20; // 20%
-
-    const homeFormWeight = 0.15; // 15%
-    const awayFormWeight = 0.15; // 15%
-
-    const homeGoalsScoredWeight = 0.10; // 10%
-    const homeGoalsConcededWeight = 0.05; // 5%
-    const awayGoalsScoredWeight = 0.05; // 5%
-    const awayGoalsConcededWeight = 0.05; // 5%
-
     const probability = Math.min(Math.round(
-      (homeStats.bothTeamsScoredPercentage * homeBTTSWeight) +
-      (awayStats.bothTeamsScoredPercentage * awayBTTSWeight) +
+      (homeStats.bothTeamsScoredPercentage * (weights.homeBTTS / 100)) +
+      (awayStats.bothTeamsScoredPercentage * (weights.awayBTTS / 100)) +
       
-      (homeStats.formPercentage * homeFormWeight) +
-      (awayStats.formPercentage * awayFormWeight) +
+      (homeStats.formPercentage * (weights.homeForm / 100)) +
+      (awayStats.formPercentage * (weights.awayForm / 100)) +
       
-      (((homeStats.homeGoalsScored / homeStats.homeMatches) * 100) * homeGoalsScoredWeight) +
-      (((homeStats.homeGoalsConceded / homeStats.homeMatches) * 100) * homeGoalsConcededWeight) +
+      (((homeStats.homeGoalsScored / homeStats.homeMatches) * 100) * (weights.homeGoalsScored / 100)) +
+      (((homeStats.homeGoalsConceded / homeStats.homeMatches) * 100) * (weights.homeGoalsConceded / 100)) +
       
-      (((awayStats.awayGoalsScored / awayStats.awayMatches) * 100) * awayGoalsScoredWeight) +
-      (((awayStats.awayGoalsConceded / awayStats.awayMatches) * 100) * awayGoalsConcededWeight)
+      (((awayStats.awayGoalsScored / awayStats.awayMatches) * 100) * (weights.awayGoalsScored / 100)) +
+      (((awayStats.awayGoalsConceded / awayStats.awayMatches) * 100) * (weights.awayGoalsConceded / 100))
     ), 100);
 
     return probability;
@@ -366,12 +366,134 @@ const Index = () => {
     <div className="min-h-screen bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-12">
-          <div className="flex justify-center mb-4">
+          <div className="flex justify-center items-center gap-4 mb-4">
             <Goal className="h-12 w-12 text-cyan-400" />
+            <button
+              onClick={() => setShowWeights(!showWeights)}
+              className="p-2 rounded-full hover:bg-gray-800 transition-colors"
+              title="Súlyozási beállítások"
+            >
+              <Settings className="h-6 w-6 text-cyan-400" />
+            </button>
           </div>
           <h1 className="text-4xl font-extrabold text-white mb-4">Soccer Match Predictor</h1>
           <p className="text-xl text-gray-400">Advanced analysis based on {matchData.length.toLocaleString()} historical matches</p>
         </div>
+
+        {showWeights && (
+          <div className="bg-gray-800/50 rounded-xl shadow-xl p-8 backdrop-blur-lg border border-gray-700/50 mb-8">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-white">Súlyozási Beállítások</h2>
+              <p className="text-gray-400">Összeg: {Object.values(weights).reduce((a, b) => a + b, 0)}%</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Hazai BTTS Súly ({weights.homeBTTS}%)
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={weights.homeBTTS}
+                  onChange={(e) => setWeights(prev => ({ ...prev, homeBTTS: parseInt(e.target.value) }))}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Vendég BTTS Súly ({weights.awayBTTS}%)
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={weights.awayBTTS}
+                  onChange={(e) => setWeights(prev => ({ ...prev, awayBTTS: parseInt(e.target.value) }))}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Hazai Forma Súly ({weights.homeForm}%)
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={weights.homeForm}
+                  onChange={(e) => setWeights(prev => ({ ...prev, homeForm: parseInt(e.target.value) }))}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Vendég Forma Súly ({weights.awayForm}%)
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={weights.awayForm}
+                  onChange={(e) => setWeights(prev => ({ ...prev, awayForm: parseInt(e.target.value) }))}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Hazai Gól Súly ({weights.homeGoalsScored}%)
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={weights.homeGoalsScored}
+                  onChange={(e) => setWeights(prev => ({ ...prev, homeGoalsScored: parseInt(e.target.value) }))}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Hazai Kapott Gól Súly ({weights.homeGoalsConceded}%)
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={weights.homeGoalsConceded}
+                  onChange={(e) => setWeights(prev => ({ ...prev, homeGoalsConceded: parseInt(e.target.value) }))}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Vendég Gól Súly ({weights.awayGoalsScored}%)
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={weights.awayGoalsScored}
+                  onChange={(e) => setWeights(prev => ({ ...prev, awayGoalsScored: parseInt(e.target.value) }))}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Vendég Kapott Gól Súly ({weights.awayGoalsConceded}%)
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={weights.awayGoalsConceded}
+                  onChange={(e) => setWeights(prev => ({ ...prev, awayGoalsConceded: parseInt(e.target.value) }))}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
           <div className="bg-gray-800/50 rounded-xl shadow-xl p-8 backdrop-blur-lg border border-gray-700/50">
