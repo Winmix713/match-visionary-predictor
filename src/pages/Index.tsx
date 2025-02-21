@@ -12,6 +12,7 @@ import {
   Filler
 } from 'chart.js';
 import { TrendingUp, Users, Goal, Loader2, ArrowUpRight, Play, Settings } from 'lucide-react';
+import { useToast } from "@/components/ui/use-toast";
 
 ChartJS.register(
   CategoryScale,
@@ -30,6 +31,15 @@ interface MatchData {
   home_score: number;
   away_score: number;
   both_teams_scored: boolean;
+}
+
+interface MatchPrediction {
+  homeTeam: string;
+  awayTeam: string;
+  probability: number;
+  timestamp: number;
+  actualResult?: boolean;
+  verified: boolean;
 }
 
 interface TeamStats {
@@ -55,12 +65,11 @@ interface TeamStats {
     awayWinPercentage: number;
     drawPercentage: number;
   };
-}
-
-interface MatchPrediction {
-  homeTeam: string;
-  awayTeam: string;
-  probability: number;
+  recentPredictions?: {
+    total: number;
+    correct: number;
+    accuracy: number;
+  };
 }
 
 const Index = () => {
@@ -86,6 +95,8 @@ const Index = () => {
   });
   const [showWeights, setShowWeights] = useState(false);
   const [professionalMode, setProfessionalMode] = useState(false);
+  const [savedPredictions, setSavedPredictions] = useState<MatchPrediction[]>([]);
+  const { toast } = useToast();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -249,15 +260,78 @@ const Index = () => {
     }
   };
 
+  // Predikciók mentése localStorage-ba
+  useEffect(() => {
+    const saved = localStorage.getItem('predictions');
+    if (saved) {
+      setSavedPredictions(JSON.parse(saved));
+    }
+  }, []);
+
+  // Predikció mentése
+  const savePrediction = (prediction: MatchPrediction) => {
+    const newPredictions = [...savedPredictions, {
+      ...prediction,
+      timestamp: Date.now(),
+      verified: false
+    }];
+    setSavedPredictions(newPredictions);
+    localStorage.setItem('predictions', JSON.stringify(newPredictions));
+  };
+
+  // Predikció eredményének rögzítése
+  const verifyPrediction = (index: number, wasCorrect: boolean) => {
+    const newPredictions = [...savedPredictions];
+    newPredictions[index] = {
+      ...newPredictions[index],
+      actualResult: wasCorrect,
+      verified: true
+    };
+    setSavedPredictions(newPredictions);
+    localStorage.setItem('predictions', JSON.stringify(newPredictions));
+    
+    toast({
+      title: "Eredmény rögzítve",
+      description: wasCorrect ? "A predikció helyes volt!" : "A predikció nem volt pontos.",
+      variant: wasCorrect ? "default" : "destructive",
+    });
+
+    // Modell pontosságának újraszámítása
+    updateModelAccuracy();
+  };
+
+  const updateModelAccuracy = () => {
+    const verifiedPredictions = savedPredictions.filter(p => p.verified);
+    const correctPredictions = verifiedPredictions.filter(p => p.actualResult).length;
+    const accuracy = verifiedPredictions.length > 0 
+      ? (correctPredictions / verifiedPredictions.length) * 100 
+      : 0;
+
+    // Statisztikák frissítése a modellek finomhangolásához
+    console.log(`Model accuracy: ${accuracy}%`);
+    // TODO: Automatikus súlyozás finomhangolás az accuracy alapján
+  };
+
   const handleRunPredictions = () => {
-    const predictions = selectedMatches.map(match => ({
-      homeTeam: match.home,
-      awayTeam: match.away,
-      probability: calculateMatchProbability(match.home, match.away)
-    }));
+    const predictions = selectedMatches.map(match => {
+      const prediction = {
+        homeTeam: match.home,
+        awayTeam: match.away,
+        probability: calculateMatchProbability(match.home, match.away),
+        timestamp: Date.now(),
+        verified: false
+      };
+      savePrediction(prediction);
+      return prediction;
+    });
     
     predictions.sort((a, b) => b.probability - a.probability);
     setPredictedMatches(predictions);
+
+    toast({
+      title: "Predikciók elkészültek",
+      description: `${predictions.length} mérkőzés elemezve`,
+    });
   };
 
   const getHomeTeamData = () => {
@@ -412,6 +486,70 @@ const Index = () => {
       </div>
     );
   }
+
+  // Predikciós előzmények komponens
+  const PredictionHistory = () => {
+    const recentPredictions = savedPredictions
+      .slice()
+      .reverse()
+      .slice(0, 10); // Csak az utolsó 10 predikció
+
+    if (recentPredictions.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="bg-gray-800/50 rounded-xl shadow-xl p-8 backdrop-blur-lg border border-gray-700/50 mt-8">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-white">Előző Predikciók</h2>
+          <div className="text-gray-400">
+            Pontosság: {
+              Math.round(
+                (savedPredictions.filter(p => p.verified && p.actualResult).length / 
+                savedPredictions.filter(p => p.verified).length) * 100
+              ) || 0
+            }%
+          </div>
+        </div>
+        <div className="space-y-4">
+          {recentPredictions.map((pred, index) => (
+            <div key={pred.timestamp} className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg">
+              <div className="flex items-center gap-4">
+                <span className="text-cyan-400">{pred.homeTeam}</span>
+                <span className="text-gray-400">vs</span>
+                <span className="text-pink-500">{pred.awayTeam}</span>
+                <span className="text-white font-bold">{pred.probability}%</span>
+              </div>
+              {!pred.verified ? (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => verifyPrediction(savedPredictions.length - 1 - index, true)}
+                    className="px-3 py-1 bg-green-600/30 text-green-400 rounded-lg hover:bg-green-600/50"
+                  >
+                    ✓
+                  </button>
+                  <button
+                    onClick={() => verifyPrediction(savedPredictions.length - 1 - index, false)}
+                    className="px-3 py-1 bg-red-600/30 text-red-400 rounded-lg hover:bg-red-600/50"
+                  >
+                    ✗
+                  </button>
+                </div>
+              ) : (
+                <div className={`px-3 py-1 rounded-lg ${
+                  pred.actualResult 
+                    ? 'bg-green-600/30 text-green-400' 
+                    : 'bg-red-600/30 text-red-400'
+                }`}>
+                  {pred.actualResult ? 'Helyes' : 'Helytelen'}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
@@ -615,74 +753,3 @@ const Index = () => {
                 className="flex-1 bg-pink-500 text-white py-3 px-6 rounded-lg hover:bg-pink-600 focus:outline-none focus:ring-2 focus:ring-pink-400 focus:ring-offset-2 focus:ring-offset-gray-800 transition duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleRunPredictions}
                 disabled={selectedMatches.length === 0}
-              >
-                <Play className="h-5 w-5" />
-                Run Predictions
-              </button>
-            </div>
-
-            <div className="mt-8">
-              <h3 className="text-lg font-semibold text-white mb-4">Selected Matches ({selectedMatches.length}/8)</h3>
-              <div className="space-y-3">
-                {selectedMatches.map((match, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-gray-700/30 border border-gray-600/30">
-                    <span className="text-cyan-400 font-medium">{match.home}</span>
-                    <span className="text-gray-400">vs</span>
-                    <span className="text-pink-500 font-medium">{match.away}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {predictedMatches.length > 0 && (
-            <div className="bg-gray-800/50 rounded-xl shadow-xl p-8 backdrop-blur-lg border border-gray-700/50">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-white">BTTS Predictions</h2>
-                <Users className="h-6 w-6 text-cyan-400" />
-              </div>
-              <div className="space-y-4">
-                {predictedMatches.map((match, index) => (
-                  <div key={index} className="relative">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-3">
-                        <span className="text-gray-400 text-sm">#{index + 1}</span>
-                        <span className="text-cyan-400 font-medium">{match.homeTeam}</span>
-                        <span className="text-gray-400">vs</span>
-                        <span className="text-pink-500 font-medium">{match.awayTeam}</span>
-                      </div>
-                      <span className="text-white font-bold">{match.probability}%</span>
-                    </div>
-                    <div className="h-2 w-full bg-gray-700/30 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-gradient-to-r from-cyan-500 to-pink-500 rounded-full transition-all duration-500"
-                        style={{ width: `${match.probability}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {(homeTeam || awayTeam) && (
-          <div className="bg-gray-800/50 rounded-xl shadow-xl p-8 backdrop-blur-lg border border-gray-700/50">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-white">Performance Analysis</h2>
-              <TrendingUp className="h-6 w-6 text-cyan-400" />
-            </div>
-            <div className="h-96">
-              <Line 
-                data={chartData} 
-                options={chartOptions}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-export default Index;
