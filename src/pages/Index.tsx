@@ -298,7 +298,7 @@ const Index = () => {
       ).length,
       draws: h2hMatches.filter(m => m.home_score === m.away_score).length,
       recentForm: h2hMatches.map(m => ({
-        date: new Date(m.date || Date.now()),
+        timestamp: Date.now(),
         result: m.both_teams_scored ? 1 : 0
       }))
     };
