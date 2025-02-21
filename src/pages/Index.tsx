@@ -297,10 +297,7 @@ const Index = () => {
         m.home_team === away && m.away_score < m.home_score
       ).length,
       draws: h2hMatches.filter(m => m.home_score === m.away_score).length,
-      recentForm: h2hMatches.map(m => ({
-        timestamp: Date.now(),
-        result: m.both_teams_scored ? 1 : 0
-      }))
+      recentForm: h2hMatches.map(m => m.both_teams_scored ? 1 : 0)
     };
 
     return stats;
