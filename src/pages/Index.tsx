@@ -25,6 +25,17 @@ ChartJS.register(
   Filler
 );
 
+interface TeamRanking {
+  team: string;
+  matches: number;
+  bttsRate: number;
+  form: number[];
+  avgGoalsScored: number;
+  avgGoalsConceded: number;
+  totalBTTS: number;
+  score: number;
+}
+
 interface MatchData {
   home_team: string;
   away_team: string;
@@ -115,6 +126,8 @@ const Index = () => {
     correct: number;
     accuracy: number;
   }>({ total: 0, correct: 0, accuracy: 0 });
+  const [teamRankings, setTeamRankings] = useState<TeamRanking[]>([]);
+  const [showRankings, setShowRankings] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -206,6 +219,62 @@ const Index = () => {
 
     setTeamStats(stats);
   };
+
+  const calculateTeamRankings = () => {
+    const rankings: { [key: string]: TeamRanking } = {};
+
+    teams.forEach(team => {
+      rankings[team] = {
+        team,
+        matches: 0,
+        bttsRate: 0,
+        form: [],
+        avgGoalsScored: 0,
+        avgGoalsConceded: 0,
+        totalBTTS: 0,
+        score: 0
+      };
+    });
+
+    matchData.forEach(match => {
+      rankings[match.home_team].matches++;
+      rankings[match.home_team].form.push(match.both_teams_scored ? 1 : 0);
+      rankings[match.home_team].avgGoalsScored += match.home_score;
+      rankings[match.home_team].avgGoalsConceded += match.away_score;
+      if (match.both_teams_scored) rankings[match.home_team].totalBTTS++;
+
+      rankings[match.away_team].matches++;
+      rankings[match.away_team].form.push(match.both_teams_scored ? 1 : 0);
+      rankings[match.away_team].avgGoalsScored += match.away_score;
+      rankings[match.away_team].avgGoalsConceded += match.home_score;
+      if (match.both_teams_scored) rankings[match.away_team].totalBTTS++;
+    });
+
+    Object.values(rankings).forEach(team => {
+      team.bttsRate = (team.totalBTTS / team.matches) * 100;
+      team.avgGoalsScored = team.avgGoalsScored / team.matches;
+      team.avgGoalsConceded = team.avgGoalsConceded / team.matches;
+      team.form = team.form.slice(-10);
+
+      team.score = (
+        (team.bttsRate * 0.4) + 
+        (team.avgGoalsScored * 15) +
+        (team.form.filter(x => x === 1).length / team.form.length * 30) +
+        ((team.avgGoalsScored - team.avgGoalsConceded) * 10)
+      );
+    });
+
+    const sortedRankings = Object.values(rankings)
+      .sort((a, b) => b.score - a.score);
+
+    setTeamRankings(sortedRankings);
+  };
+
+  useEffect(() => {
+    if (matchData.length > 0) {
+      calculateTeamRankings();
+    }
+  }, [matchData]);
 
   const calculateMatchProbability = (home: string, away: string): number => {
     if (!teamStats[home] || !teamStats[away]) return 0;
@@ -532,6 +601,65 @@ const Index = () => {
     );
   };
 
+  const TeamRankingsTable = () => {
+    if (!showRankings || teamRankings.length === 0) return null;
+
+    return (
+      <div className="bg-gray-800/50 rounded-xl shadow-xl p-8 backdrop-blur-lg border border-gray-700/50 mt-8">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-white">Csapat Rangsor</h2>
+          <div className="text-gray-400">
+            {teamRankings.length} csapat elemezve
+          </div>
+        </div>
+        
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left text-gray-300">
+            <thead className="text-xs uppercase bg-gray-700/50">
+              <tr>
+                <th className="px-4 py-3">Helyezés</th>
+                <th className="px-4 py-3">Csapat</th>
+                <th className="px-4 py-3">Mérkőzések</th>
+                <th className="px-4 py-3">BTTS %</th>
+                <th className="px-4 py-3">Átlag Gól</th>
+                <th className="px-4 py-3">Átlag Kapott</th>
+                <th className="px-4 py-3">Forma (10)</th>
+                <th className="px-4 py-3">Pontszám</th>
+              </tr>
+            </thead>
+            <tbody>
+              {teamRankings.map((team, index) => (
+                <tr key={team.team} className="border-b border-gray-700/30 hover:bg-gray-700/20">
+                  <td className="px-4 py-3">{index + 1}</td>
+                  <td className="px-4 py-3 font-medium text-cyan-400">{team.team}</td>
+                  <td className="px-4 py-3">{team.matches}</td>
+                  <td className="px-4 py-3">{team.bttsRate.toFixed(1)}%</td>
+                  <td className="px-4 py-3">{team.avgGoalsScored.toFixed(2)}</td>
+                  <td className="px-4 py-3">{team.avgGoalsConceded.toFixed(2)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-1">
+                      {team.form.map((result, i) => (
+                        <div
+                          key={i}
+                          className={`w-2 h-2 rounded-full ${
+                            result ? 'bg-green-500' : 'bg-red-500'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 font-bold text-pink-500">
+                    {team.score.toFixed(1)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900">
@@ -764,6 +892,8 @@ const Index = () => {
           </div>
         </div>
 
+        <TeamRankingsTable />
+        
         <PredictionHistory />
       </div>
     </div>
