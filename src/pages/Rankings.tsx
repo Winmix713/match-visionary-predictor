@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { TeamRanking, MatchData } from "../types";
@@ -85,7 +86,7 @@ const Rankings = () => {
       },
     ];
 
-    const teamStats: { [team: string]: { scored: number; conceded: number; matches: number; btts: number; form: boolean[] } } = {};
+    const teamStats: { [team: string]: { scored: number; conceded: number; matches: number; btts: number; form: number[] } } = {};
 
     matches.forEach((match) => {
       const { home_team, away_team, home_score, away_score, both_teams_scored } = match;
@@ -109,8 +110,9 @@ const Rankings = () => {
         teamStats[away_team].btts++;
       }
 
-      teamStats[home_team].form.push(home_score > away_score);
-      teamStats[away_team].form.push(away_score > home_score);
+      // Convert boolean to number (1 for true, 0 for false)
+      teamStats[home_team].form.push(home_score > away_score ? 1 : 0);
+      teamStats[away_team].form.push(away_score > home_score ? 1 : 0);
     });
 
     const calculatedRankings: TeamRanking[] = Object.entries(teamStats).map(([team, stats]) => {
@@ -174,7 +176,7 @@ const Rankings = () => {
                           <div
                             key={i}
                             className={`w-2 h-2 rounded-full ${
-                              result ? 'bg-green-500' : 'bg-red-500'
+                              result === 1 ? 'bg-green-500' : 'bg-red-500'
                             }`}
                           />
                         ))}
