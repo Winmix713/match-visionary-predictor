@@ -11,8 +11,8 @@ import {
   Legend,
   Filler
 } from 'chart.js';
-import { TrendingUp, Users, Goal, Loader2, ArrowUpRight, Play, Settings } from 'lucide-react';
-import { useToast } from "@/components/ui/use-toast";
+import { TrendingUp, Users, Goal, Loader2, ArrowUpRight, Play, Settings, Download } from 'lucide-react';
+import { useToast } from "@/hooks/use-toast";
 
 ChartJS.register(
   CategoryScale,
@@ -31,15 +31,6 @@ interface MatchData {
   home_score: number;
   away_score: number;
   both_teams_scored: boolean;
-}
-
-interface MatchPrediction {
-  homeTeam: string;
-  awayTeam: string;
-  probability: number;
-  timestamp: number;
-  actualResult?: boolean;
-  verified: boolean;
 }
 
 interface TeamStats {
@@ -72,6 +63,27 @@ interface TeamStats {
   };
 }
 
+interface MatchPrediction {
+  homeTeam: string;
+  awayTeam: string;
+  probability: number;
+  timestamp: number;
+  actualResult?: boolean;
+  verified: boolean;
+  isDerby?: boolean;
+  isSeasonEnd?: boolean;
+  h2hStats?: {
+    lastEncounters: number;
+    homeWins: number;
+    awayWins: number;
+    draws: number;
+  };
+  formTrend?: {
+    home: number[];
+    away: number[];
+  };
+}
+
 const Index = () => {
   const [homeTeam, setHomeTeam] = useState('');
   const [awayTeam, setAwayTeam] = useState('');
@@ -96,6 +108,13 @@ const Index = () => {
   const [showWeights, setShowWeights] = useState(false);
   const [professionalMode, setProfessionalMode] = useState(false);
   const [savedPredictions, setSavedPredictions] = useState<MatchPrediction[]>([]);
+  const [h2hAnalysis, setH2hAnalysis] = useState<any>(null);
+  const [seasonalTrends, setSeasonalTrends] = useState<any>(null);
+  const [modelAccuracy, setModelAccuracy] = useState<{
+    total: number;
+    correct: number;
+    accuracy: number;
+  }>({ total: 0, correct: 0, accuracy: 0 });
   const { toast } = useToast();
 
   useEffect(() => {
@@ -197,7 +216,6 @@ const Index = () => {
     let probability: number;
 
     if (professionalMode) {
-      // Első 50% - jelenlegi súlyozási rendszer felére csökkentve
       const currentSystemProb = 
         (homeStats.bothTeamsScoredPercentage * (weights.homeBTTS / 200)) +
         (awayStats.bothTeamsScoredPercentage * (weights.awayBTTS / 200)) +
@@ -208,12 +226,10 @@ const Index = () => {
         (((awayStats.awayGoalsScored / awayStats.awayMatches) * 100) * (weights.awayGoalsScored / 200)) +
         (((awayStats.awayGoalsConceded / awayStats.awayMatches) * 100) * (weights.awayGoalsConceded / 200));
 
-      // Második 50% - PHP alapú komplex számítási rendszer
       const complexSystemProb = calculateComplexProbability(homeStats, awayStats);
       
       probability = currentSystemProb + complexSystemProb;
     } else {
-      // Eredeti számítási mód
       probability = 
         (homeStats.bothTeamsScoredPercentage * (weights.homeBTTS / 100)) +
         (awayStats.bothTeamsScoredPercentage * (weights.awayBTTS / 100)) +
@@ -229,23 +245,19 @@ const Index = () => {
   };
 
   const calculateComplexProbability = (homeStats: TeamStats, awayStats: TeamStats): number => {
-    // Az eredeti PHP kódból átvett komplex számítási logika
-    const expectedGoalsWeight = 15; // 15%
-    const formIndexWeight = 15;    // 15%
-    const h2hStatsWeight = 20;     // 20%
+    const expectedGoalsWeight = 15;
+    const formIndexWeight = 15;
+    const h2hStatsWeight = 20;
 
-    // Várható gólok alapján
     const homeExpectedGoals = homeStats.averageGoalsScored || 0;
     const awayExpectedGoals = awayStats.averageGoalsScored || 0;
     const expectedGoalsProb = 
       ((homeExpectedGoals + awayExpectedGoals) / 4) * expectedGoalsWeight;
 
-    // Forma index alapján
     const homeForm = homeStats.formPercentage || 0;
     const awayForm = awayStats.formPercentage || 0;
     const formProb = ((homeForm + awayForm) / 200) * formIndexWeight;
 
-    // Head-to-head statisztikák alapján
     const h2hProb = (homeStats.bothTeamsScoredPercentage + 
       awayStats.bothTeamsScoredPercentage) / 2 * (h2hStatsWeight / 100);
 
@@ -260,26 +272,68 @@ const Index = () => {
     }
   };
 
-  // Predikciók mentése localStorage-ba
   useEffect(() => {
     const saved = localStorage.getItem('predictions');
     if (saved) {
       setSavedPredictions(JSON.parse(saved));
+      calculateModelAccuracy(JSON.parse(saved));
     }
   }, []);
 
-  // Predikció mentése
-  const savePrediction = (prediction: MatchPrediction) => {
-    const newPredictions = [...savedPredictions, {
-      ...prediction,
-      timestamp: Date.now(),
-      verified: false
-    }];
-    setSavedPredictions(newPredictions);
-    localStorage.setItem('predictions', JSON.stringify(newPredictions));
+  const calculateH2HStats = (home: string, away: string) => {
+    const h2hMatches = matchData.filter(match => 
+      (match.home_team === home && match.away_team === away) ||
+      (match.home_team === away && match.away_team === home)
+    ).slice(-50);
+
+    const stats = {
+      totalMatches: h2hMatches.length,
+      homeWins: h2hMatches.filter(m => 
+        m.home_team === home && m.home_score > m.away_score ||
+        m.home_team === away && m.away_score > m.home_score
+      ).length,
+      awayWins: h2hMatches.filter(m => 
+        m.home_team === home && m.home_score < m.away_score ||
+        m.home_team === away && m.away_score < m.home_score
+      ).length,
+      draws: h2hMatches.filter(m => m.home_score === m.away_score).length,
+      recentForm: h2hMatches.map(m => ({
+        date: new Date(m.date || Date.now()),
+        result: m.both_teams_scored ? 1 : 0
+      }))
+    };
+
+    return stats;
   };
 
-  // Predikció eredményének rögzítése
+  const calculateSeasonalTrends = (team: string) => {
+    const teamMatches = matchData.filter(m => 
+      m.home_team === team || m.away_team === team
+    ).slice(-50);
+
+    return {
+      form: teamMatches.map(m => m.both_teams_scored ? 1 : 0),
+      homeAdvantage: teamMatches.filter(m => 
+        m.home_team === team && m.home_score > m.away_score
+      ).length / teamMatches.filter(m => m.home_team === team).length,
+      awayDisadvantage: teamMatches.filter(m => 
+        m.away_team === team && m.away_score < m.home_score
+      ).length / teamMatches.filter(m => m.away_team === team).length
+    };
+  };
+
+  const calculateModelAccuracy = (predictions: MatchPrediction[]) => {
+    const verifiedPredictions = predictions.filter(p => p.verified);
+    const correct = verifiedPredictions.filter(p => p.actualResult).length;
+    setModelAccuracy({
+      total: verifiedPredictions.length,
+      correct: correct,
+      accuracy: verifiedPredictions.length > 0 
+        ? (correct / verifiedPredictions.length) * 100 
+        : 0
+    });
+  };
+
   const verifyPrediction = (index: number, wasCorrect: boolean) => {
     const newPredictions = [...savedPredictions];
     newPredictions[index] = {
@@ -289,39 +343,70 @@ const Index = () => {
     };
     setSavedPredictions(newPredictions);
     localStorage.setItem('predictions', JSON.stringify(newPredictions));
+    calculateModelAccuracy(newPredictions);
     
     toast({
       title: "Eredmény rögzítve",
       description: wasCorrect ? "A predikció helyes volt!" : "A predikció nem volt pontos.",
       variant: wasCorrect ? "default" : "destructive",
     });
-
-    // Modell pontosságának újraszámítása
-    updateModelAccuracy();
   };
 
-  const updateModelAccuracy = () => {
-    const verifiedPredictions = savedPredictions.filter(p => p.verified);
-    const correctPredictions = verifiedPredictions.filter(p => p.actualResult).length;
-    const accuracy = verifiedPredictions.length > 0 
-      ? (correctPredictions / verifiedPredictions.length) * 100 
-      : 0;
+  const exportPredictions = () => {
+    const data = savedPredictions.map(p => ({
+      ...p,
+      date: new Date(p.timestamp).toLocaleDateString(),
+      status: p.verified ? (p.actualResult ? 'Helyes' : 'Helytelen') : 'Nem ellenőrzött'
+    }));
 
-    // Statisztikák frissítése a modellek finomhangolásához
-    console.log(`Model accuracy: ${accuracy}%`);
-    // TODO: Automatikus súlyozás finomhangolás az accuracy alapján
+    const csv = [
+      ['Dátum', 'Hazai', 'Vendég', 'Valószínűség', 'Státusz'].join(','),
+      ...data.map(row => [
+        row.date,
+        row.homeTeam,
+        row.awayTeam,
+        `${row.probability}%`,
+        row.status
+      ].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'predikciok.csv';
+    link.click();
   };
 
   const handleRunPredictions = () => {
     const predictions = selectedMatches.map(match => {
-      const prediction = {
+      const h2hStats = calculateH2HStats(match.home, match.away);
+      const homeTrends = calculateSeasonalTrends(match.home);
+      const awayTrends = calculateSeasonalTrends(match.away);
+
+      const prediction: MatchPrediction = {
         homeTeam: match.home,
         awayTeam: match.away,
         probability: calculateMatchProbability(match.home, match.away),
         timestamp: Date.now(),
-        verified: false
+        verified: false,
+        isDerby: h2hStats.totalMatches > 10,
+        isSeasonEnd: new Date().getMonth() >= 4,
+        h2hStats: {
+          lastEncounters: h2hStats.totalMatches,
+          homeWins: h2hStats.homeWins,
+          awayWins: h2hStats.awayWins,
+          draws: h2hStats.draws
+        },
+        formTrend: {
+          home: homeTrends.form,
+          away: awayTrends.form
+        }
       };
-      savePrediction(prediction);
+
+      const newPredictions = [...savedPredictions, prediction];
+      setSavedPredictions(newPredictions);
+      localStorage.setItem('predictions', JSON.stringify(newPredictions));
+
       return prediction;
     });
     
@@ -334,165 +419,46 @@ const Index = () => {
     });
   };
 
-  const getHomeTeamData = () => {
-    if (!homeTeam) return Array(7).fill(0);
-    return [
-      Math.round(teamStats[homeTeam]?.bothTeamsScoredPercentage || 0),
-      Math.round((teamStats[homeTeam]?.averageGoalsScored || 0) * 20),
-      Math.round((teamStats[homeTeam]?.averageGoalsConceded || 0) * 20),
-      Math.round(teamStats[homeTeam]?.formPercentage || 0),
-      Math.round(teamStats[homeTeam]?.homeGoalsScored || 0),
-      Math.round(teamStats[homeTeam]?.awayGoalsScored || 0),
-      Math.round(teamStats[homeTeam]?.totalMatches || 0)
-    ];
-  };
-
-  const getAwayTeamData = () => {
-    if (!awayTeam) return Array(7).fill(0);
-    return [
-      Math.round(teamStats[awayTeam]?.bothTeamsScoredPercentage || 0),
-      Math.round((teamStats[awayTeam]?.averageGoalsScored || 0) * 20),
-      Math.round((teamStats[awayTeam]?.averageGoalsConceded || 0) * 20),
-      Math.round(teamStats[awayTeam]?.formPercentage || 0),
-      Math.round(teamStats[awayTeam]?.homeGoalsScored || 0),
-      Math.round(teamStats[awayTeam]?.awayGoalsScored || 0),
-      Math.round(teamStats[awayTeam]?.totalMatches || 0)
-    ];
-  };
-
-  const chartData = {
-    labels: ['BTTS %', 'Avg Goals', 'Avg Conceded', 'Form %', 'Home Goals', 'Away Goals', 'Total Matches'],
-    datasets: [
-      {
-        label: homeTeam || 'Home Team',
-        data: getHomeTeamData(),
-        backgroundColor: (context) => {
-          const ctx = context.chart.ctx;
-          const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-          gradient.addColorStop(0, 'rgba(6, 182, 212, 0.5)');
-          gradient.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
-          return gradient;
-        },
+  const AccuracyChart = () => {
+    const data = {
+      labels: savedPredictions.slice(-20).map(p => 
+        `${p.homeTeam} vs ${p.awayTeam}`
+      ),
+      datasets: [{
+        label: 'Predikciós Pontosság',
+        data: savedPredictions.slice(-20).map(p => 
+          p.verified ? (p.actualResult ? 100 : 0) : null
+        ),
         borderColor: 'rgb(6, 182, 212)',
-        borderWidth: 2,
-        fill: true,
         tension: 0.4
-      },
-      {
-        label: awayTeam || 'Away Team',
-        data: getAwayTeamData(),
-        backgroundColor: (context) => {
-          const ctx = context.chart.ctx;
-          const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-          gradient.addColorStop(0, 'rgba(236, 72, 153, 0.5)');
-          gradient.addColorStop(1, 'rgba(236, 72, 153, 0.0)');
-          return gradient;
-        },
-        borderColor: 'rgb(236, 72, 153)',
-        borderWidth: 2,
-        fill: true,
-        tension: 0.4
-      }
-    ]
-  };
+      }]
+    };
 
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    scales: {
-      y: {
-        beginAtZero: true,
-        grid: {
-          color: 'rgba(255, 255, 255, 0.05)',
-          drawBorder: false
-        },
-        ticks: {
-          color: 'rgba(255, 255, 255, 0.5)',
-          font: {
-            size: 12
-          },
-          padding: 10
-        },
-        border: {
-          display: false
-        }
-      },
-      x: {
-        grid: {
-          display: false,
-          drawBorder: false
-        },
-        ticks: {
-          color: 'rgba(255, 255, 255, 0.5)',
-          font: {
-            size: 12
-          },
-          padding: 10
-        },
-        border: {
-          display: false
-        }
-      }
-    },
-    plugins: {
-      legend: {
-        position: 'top' as const,
-        labels: {
-          color: 'rgba(255, 255, 255, 0.7)',
-          font: {
-            family: 'system-ui',
-            size: 12
-          },
-          padding: 20,
-          usePointStyle: true,
-          pointStyle: 'circle'
-        }
-      },
-      tooltip: {
-        backgroundColor: 'rgba(17, 24, 39, 0.8)',
-        titleColor: 'rgba(255, 255, 255, 1)',
-        bodyColor: 'rgba(255, 255, 255, 0.8)',
-        padding: 12,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-        borderWidth: 1
-      }
-    },
-    elements: {
-      point: {
-        radius: 4,
-        hoverRadius: 6
-      }
-    }
-  };
-
-  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="text-center animate-fade-in">
-          <Loader2 className="h-12 w-12 animate-spin text-cyan-400 mx-auto mb-4" />
-          <p className="text-gray-400">Loading match data...</p>
-        </div>
+      <div className="h-64">
+        <Line data={data} options={{
+          responsive: true,
+          plugins: {
+            legend: {
+              display: true
+            }
+          },
+          scales: {
+            y: {
+              min: 0,
+              max: 100
+            }
+          }
+        }} />
       </div>
     );
-  }
+  };
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="text-center text-red-400">
-          <p className="text-xl font-semibold">Error loading data</p>
-          <p className="mt-2">{error}</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Predikciós előzmények komponens
   const PredictionHistory = () => {
     const recentPredictions = savedPredictions
       .slice()
       .reverse()
-      .slice(0, 10); // Csak az utolsó 10 predikció
+      .slice(0, 10);
 
     if (recentPredictions.length === 0) {
       return null;
@@ -502,16 +468,24 @@ const Index = () => {
       <div className="bg-gray-800/50 rounded-xl shadow-xl p-8 backdrop-blur-lg border border-gray-700/50 mt-8">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-white">Előző Predikciók</h2>
-          <div className="text-gray-400">
-            Pontosság: {
-              Math.round(
-                (savedPredictions.filter(p => p.verified && p.actualResult).length / 
-                savedPredictions.filter(p => p.verified).length) * 100
-              ) || 0
-            }%
+          <div className="flex items-center gap-4">
+            <div className="text-gray-400">
+              Pontosság: {modelAccuracy.accuracy.toFixed(1)}%
+              ({modelAccuracy.correct}/{modelAccuracy.total})
+            </div>
+            <button
+              onClick={exportPredictions}
+              className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors"
+              title="Exportálás CSV-be"
+            >
+              <Download className="h-5 w-5 text-gray-300" />
+            </button>
           </div>
         </div>
-        <div className="space-y-4">
+
+        <AccuracyChart />
+
+        <div className="space-y-4 mt-8">
           {recentPredictions.map((pred, index) => (
             <div key={pred.timestamp} className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg">
               <div className="flex items-center gap-4">
@@ -519,6 +493,16 @@ const Index = () => {
                 <span className="text-gray-400">vs</span>
                 <span className="text-pink-500">{pred.awayTeam}</span>
                 <span className="text-white font-bold">{pred.probability}%</span>
+                {pred.isDerby && (
+                  <span className="px-2 py-1 text-xs bg-yellow-500/20 text-yellow-400 rounded">
+                    Derby
+                  </span>
+                )}
+                {pred.isSeasonEnd && (
+                  <span className="px-2 py-1 text-xs bg-orange-500/20 text-orange-400 rounded">
+                    Szezonvég
+                  </span>
+                )}
               </div>
               {!pred.verified ? (
                 <div className="flex gap-2">
@@ -550,6 +534,28 @@ const Index = () => {
       </div>
     );
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="text-center animate-fade-in">
+          <Loader2 className="h-12 w-12 animate-spin text-cyan-400 mx-auto mb-4" />
+          <p className="text-gray-400">Loading match data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="text-center text-red-400">
+          <p className="text-xl font-semibold">Error loading data</p>
+          <p className="mt-2">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
@@ -753,3 +759,18 @@ const Index = () => {
                 className="flex-1 bg-pink-500 text-white py-3 px-6 rounded-lg hover:bg-pink-600 focus:outline-none focus:ring-2 focus:ring-pink-400 focus:ring-offset-2 focus:ring-offset-gray-800 transition duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleRunPredictions}
                 disabled={selectedMatches.length === 0}
+              >
+                <Play className="h-6 w-6 text-pink-400" />
+                Run Predictions
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <PredictionHistory />
+      </div>
+    </div>
+  );
+};
+
+export default Index;
